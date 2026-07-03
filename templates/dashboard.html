@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Expense Tracker</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Google Fonts (Inter) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f4f7f6;
+        }
+        .sidebar {
+            background-color: #212529;
+            min-height: 100vh;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+        }
+        .sidebar-brand {
+            font-size: 1.25rem;
+            font-weight: 700;
+            padding: 1.5rem 1rem;
+            color: #fff;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .sidebar .nav-link {
+            color: rgba(255, 255, 255, 0.7);
+            font-weight: 500;
+            padding: 0.75rem 1.25rem;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            margin: 0.2rem 0;
+        }
+        .sidebar .nav-link:hover {
+            color: #fff;
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        .sidebar .nav-link.active {
+            color: #fff;
+            background-color: #0d6efd;
+        }
+        .card {
+            border: none;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 20px rgba(0,0,0,0.1);
+        }
+        .metric-card {
+            border-left: 5px solid;
+        }
+        .card-balance { border-left-color: #0d6efd; }
+        .card-income { border-left-color: #198754; }
+        .card-expense { border-left-color: #dc3545; }
+        .card-savings { border-left-color: #0dcaf0; }
+        .card-curr-expense { border-left-color: #fd7e14; }
+        .card-comparison { border-left-color: #6f42c1; }
+        .card-highest { border-left-color: #20c997; }
+
+        .latest-transactions-card {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .badge-income {
+            background-color: rgba(25, 135, 84, 0.1);
+            color: #198754;
+        }
+        .badge-expense {
+            background-color: rgba(220, 53, 69, 0.1);
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 col-lg-2 d-md-block sidebar collapse p-3">
+                <a class="sidebar-brand mb-4" href="{{ url_for('dashboard') }}">
+                    <i class="bi bi-wallet2 me-2"></i> Expenser
+                </a>
+                <ul class="nav nav-pills flex-column mb-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="{{ url_for('dashboard') }}">
+                            <i class="bi bi-speedometer2 me-2"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('add_income') }}">
+                            <i class="bi bi-plus-circle me-2 text-success"></i> Add Income
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('add_expense') }}">
+                            <i class="bi bi-dash-circle me-2 text-danger"></i> Add Expense
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('stats') }}">
+                            <i class="bi bi-graph-up me-2"></i> Stats
+                        </a>
+                    </li>
+                    <li class="nav-item mt-4">
+                        <a class="btn btn-outline-light w-100" href="{{ url_for('logout') }}">
+                            <i class="bi bi-box-arrow-right me-2"></i> Logout
+                        </a>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Main Content Area -->
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 py-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="h2 mb-0 text-gray-800">Financial Dashboard</h1>
+            <span class="badge bg-secondary p-2"><i class="bi bi-calendar3 me-1"></i> Today: {{ chart_months[-1] if chart_months else 'Current Month' }}</span>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Metric Cards Grid -->
+        <div class="row g-3 mb-4">
+            <!-- Total Balance -->
+            <div class="col-md-3">
+                <div class="card metric-card card-balance h-100 p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="text-muted text-uppercase small font-weight-bold">Total Balance</span>
+                            <h3 class="fw-bold mt-1 mb-0">${{ "%.2f"|format(total_balance) }}</h3>
+                        </div>
+                        <div class="bg-primary bg-opacity-10 p-3 rounded-circle text-primary">
+                            <i class="bi bi-cash-coin fs-4"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Total Income -->
+            <div class="col-md-3">
+                <div class="card metric-card card-income h-100 p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="text-muted text-uppercase small font-weight-bold">Total Income</span>
+                            <h3 class="fw-bold mt-1 mb-0 text-success">${{ "%.2f"|format(total_income) }}</h3>
+                        </div>
+                        <div class="bg-success bg-opacity-10 p-3 rounded-circle text-success">
+                            <i class="bi bi-arrow-down-left-circle fs-4"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Total Expenses -->
+            <div class="col-md-3">
+                <div class="card metric-card card-expense h-100 p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="text-muted text-uppercase small font-weight-bold">Total Expenses</span>
+                            <h3 class="fw-bold mt-1 mb-0 text-danger">${{ "%.2f"|format(total_expense) }}</h3>
+                        </div>
+                        <div class="bg-danger bg-opacity-10 p-3 rounded-circle text-danger">
+                            <i class="bi bi-arrow-up-right-circle fs-4"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Monthly Savings -->
+            <div class="col-md-3">
+                <div class="card metric-card card-savings h-100 p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="text-muted text-uppercase small font-weight-bold">Monthly Savings</span>
+                            <h3 class="fw-bold mt-1 mb-0 text-info">${{ "%.2f"|format(monthly_savings) }}</h3>
+                        </div>
+                        <div class="bg-info bg-opacity-10 p-3 rounded-circle text-info">
+                            <i class="bi bi-piggy-bank fs-4"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Current Month Expenses -->
+            <div class="col-md-4">
+                <div class="card metric-card card-curr-expense h-100 p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="text-muted text-uppercase small font-weight-bold">Current Month Expenses</span>
+                            <h3 class="fw-bold mt-1 mb-0 text-warning">${{ "%.2f"|format(current_month_expense) }}</h3>
+                        </div>
+                        <div class="bg-warning bg-opacity-10 p-3 rounded-circle text-warning">
+                            <i class="bi bi-bag-check fs-4"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Previous Month Comparison -->
+            <div class="col-md-4">
+                <div class="card metric-card card-comparison h-100 p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="text-muted text-uppercase small font-weight-bold">Previous Month Comparison</span>
+                            <h5 class="fw-bold mt-1 mb-0">{{ comp_text }}</h5>
+                        </div>
+                        <div class="bg-purple bg-opacity-10 p-3 rounded-circle text-purple" style="color: #6f42c1;">
+                            <i class="bi bi-percent fs-4"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Highest Expense Category -->
+            <div class="col-md-4">
+                <div class="card metric-card card-highest h-100 p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="text-muted text-uppercase small font-weight-bold">Highest Expense Category</span>
+                            <h5 class="fw-bold mt-1 mb-0 text-teal">{{ highest_category }}</h5>
+                        </div>
+                        <div class="bg-teal bg-opacity-10 p-3 rounded-circle text-teal" style="color: #20c997;">
+                            <i class="bi bi-tags fs-4"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts & Latest Transactions -->
+        <div class="row g-4">
+            <!-- Charts Section (Left) -->
+            <div class="col-lg-8">
+                <div class="row g-4">
+                    <!-- Monthly Income vs Expense -->
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-header bg-white border-0 pt-3 pb-0">
+                                <h5 class="card-title mb-0 fw-semibold text-secondary">Monthly Income vs Expense</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="incomeVsExpenseChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Expense by Category -->
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-header bg-white border-0 pt-3 pb-0">
+                                <h5 class="card-title mb-0 fw-semibold text-secondary">Expense by Category</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="expenseByCategoryChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Weekly Spending Trend -->
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-header bg-white border-0 pt-3 pb-0">
+                                <h5 class="card-title mb-0 fw-semibold text-secondary">Weekly Spending Trend</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="weeklySpendingChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Monthly Savings Chart -->
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-header bg-white border-0 pt-3 pb-0">
+                                <h5 class="card-title mb-0 fw-semibold text-secondary">Monthly Savings Chart</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="monthlySavingsChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Latest Transactions Section (Right) -->
+            <div class="col-lg-4">
+                <div class="card h-100 latest-transactions-card">
+                    <div class="card-header bg-white border-0 pt-3 pb-0 d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0 fw-semibold text-secondary">Latest Transactions</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if not latest_transactions %}
+                            <div class="text-center py-5 text-muted">
+                                <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                No transactions recorded yet.
+                            </div>
+                        {% else %}
+                            <div class="list-group list-group-flush">
+                                {% for tx in latest_transactions %}
+                                    <div class="list-group-item px-0 py-3 border-bottom">
+                                        <div class="d-flex w-100 justify-content-between align-items-center mb-1">
+                                            <span class="badge {{ 'badge-income' if tx.type == 'Income' else 'badge-expense' }} rounded-pill">
+                                                {{ tx.type }}
+                                            </span>
+                                            <small class="text-muted">{{ tx.date }}</small>
+                                        </div>
+                                        <div class="d-flex w-100 justify-content-between align-items-center">
+                                            <div>
+                                                <h6 class="mb-0 fw-semibold">{{ tx.category }}</h6>
+                                                <small class="text-muted d-block text-truncate" style="max-width: 180px;">{{ tx.description }}</small>
+                                            </div>
+                                            <div class="d-flex align-items-center">
+                                                <span class="fw-bold me-3 {{ 'text-success' if tx.type == 'Income' else 'text-danger' }}">
+                                                    {{ '+' if tx.type == 'Income' else '-' }}${{ "%.2f"|format(tx.amount) }}
+                                                </span>
+                                                {% if tx.type == 'Income' %}
+                                                    <a href="{{ url_for('delete_income', income_id=tx.id) }}" class="btn btn-outline-danger btn-sm p-1 border-0" onclick="return confirm('Delete this income?');">
+                                                        <i class="bi bi-trash"></i>
+                                                    </a>
+                                                {% else %}
+                                                    <a href="{{ url_for('delete_expense', expense_id=tx.id) }}" class="btn btn-outline-danger btn-sm p-1 border-0" onclick="return confirm('Delete this expense?');">
+                                                        <i class="bi bi-trash"></i>
+                                                    </a>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+        </main>
+    </div>
+</div>
+
+    <!-- Chart Configuration Script -->
+    <script>
+        // Color configuration
+        const colors = {
+            primary: '#0d6efd',
+            success: '#198754',
+            danger: '#dc3545',
+            info: '#0dcaf0',
+            warning: '#fd7e14',
+            purple: '#6f42c1',
+            grey: '#6c757d'
+        };
+
+        // Chart 1: Income vs Expense Chart
+        const incVsExpCtx = document.getElementById('incomeVsExpenseChart').getContext('2d');
+        new Chart(incVsExpCtx, {
+            type: 'bar',
+            data: {
+                labels: {{ chart_months|tojson }},
+                datasets: [
+                    {
+                        label: 'Income',
+                        data: {{ chart_monthly_income|tojson }},
+                        backgroundColor: colors.success,
+                        borderRadius: 4
+                    },
+                    {
+                        label: 'Expense',
+                        data: {{ chart_monthly_expense|tojson }},
+                        backgroundColor: colors.danger,
+                        borderRadius: 4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' }
+                },
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+
+        // Chart 2: Expense by Category Chart
+        const expenseCatCtx = document.getElementById('expenseByCategoryChart').getContext('2d');
+        new Chart(expenseCatCtx, {
+            type: 'pie',
+            data: {
+                labels: {{ pie_labels|tojson }},
+                datasets: [{
+                    data: {{ pie_data|tojson }},
+                    backgroundColor: [colors.primary, colors.warning, colors.purple, colors.info, colors.danger, colors.success]
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'right' }
+                }
+            }
+        });
+
+        // Chart 3: Weekly Spending Trend Chart
+        const weeklySpendingCtx = document.getElementById('weeklySpendingChart').getContext('2d');
+        new Chart(weeklySpendingCtx, {
+            type: 'line',
+            data: {
+                labels: {{ weekly_labels|tojson }},
+                datasets: [{
+                    label: 'Daily Expense',
+                    data: {{ weekly_data|tojson }},
+                    borderColor: colors.warning,
+                    backgroundColor: 'rgba(253, 126, 20, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    borderWidth: 2,
+                    pointRadius: 3
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+
+        // Chart 4: Monthly Savings Chart
+        const monthlySavingsCtx = document.getElementById('monthlySavingsChart').getContext('2d');
+        new Chart(monthlySavingsCtx, {
+            type: 'line',
+            data: {
+                labels: {{ chart_months|tojson }},
+                datasets: [{
+                    label: 'Monthly Savings',
+                    data: {{ chart_monthly_savings|tojson }},
+                    borderColor: colors.info,
+                    backgroundColor: 'rgba(13, 202, 240, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    borderWidth: 2,
+                    pointRadius: 3
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+    </script>
+
+    <!-- Bootstrap 5 JavaScript Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
