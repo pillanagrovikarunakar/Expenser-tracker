@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: expense-tracker
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python create_db.py && gunicorn app:app
